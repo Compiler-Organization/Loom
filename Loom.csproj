@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Loom.App\**" />
+    <EmbeddedResource Remove="Loom.App\**" />
+    <None Remove="Loom.App\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Tools.GeneralTK" Version="1.0.2" />
+  </ItemGroup>
+
+  <!-- Removed incompatible package reference to Tools.GeneralTK so project can build with available SDK -->
+
+</Project>

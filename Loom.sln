@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.4.11605.240 stable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Loom", "Loom.csproj", "{3446AB15-E686-4AF9-92D0-45A1B9E08358}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Loom.App", "Loom.App\Loom.App.csproj", "{6330AE58-FE72-4412-8A60-9A08EF675653}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3446AB15-E686-4AF9-92D0-45A1B9E08358}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3446AB15-E686-4AF9-92D0-45A1B9E08358}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3446AB15-E686-4AF9-92D0-45A1B9E08358}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3446AB15-E686-4AF9-92D0-45A1B9E08358}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6330AE58-FE72-4412-8A60-9A08EF675653}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6330AE58-FE72-4412-8A60-9A08EF675653}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6330AE58-FE72-4412-8A60-9A08EF675653}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6330AE58-FE72-4412-8A60-9A08EF675653}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5B65BFB9-0291-4F29-8670-D202A4A5C73C}
+	EndGlobalSection
+EndGlobal
