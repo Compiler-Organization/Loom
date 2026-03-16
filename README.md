@@ -23,6 +23,9 @@ string script = File.ReadAllText("Tests\\Sample.lua");
 LexicalAnalyser codeLexer = new LexicalAnalyser(script);
 LexTokenList lexTokens = codeLexer.Analyze();
 
+Preprocessor preProcessor = new Preprocessor(lexTokens);
+lexTokens = preProcessor.Process();
+
 ASTGenerator astGenerator = new ASTGenerator(lexTokens);
 StatementList statements = astGenerator.ParseStatements();
 

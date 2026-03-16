@@ -4,6 +4,18 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>$(AssemblyName).Parser.Lua</PackageId>
+    <Title>Loom.Lua.Parser</Title>
+    <Authors>Draugr-official</Authors>
+    <Company>Compiler-Organization @ github.com</Company>
+    <Description>A generic recursive-decent / precedence Lua parser</Description>
+    <PackageProjectUrl>https://github.com/Compiler-Organization/Loom</PackageProjectUrl>
+    <PackageTags>lua;luaparser;lua parser;parser</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/Compiler-Organization/Loom</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>Initial release</PackageReleaseNotes>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +26,13 @@
 
   <ItemGroup>
     <PackageReference Include="Tools.GeneralTK" Version="1.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 
   <!-- Removed incompatible package reference to Tools.GeneralTK so project can build with available SDK -->

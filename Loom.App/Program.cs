@@ -6,6 +6,7 @@ using Loom.Parser.Preprocessor;
 using Loom.Parser.PrettyPrint;
 using GeneralTK.Extensions.Console;
 using GeneralTK.Extensions.Logging;
+using System.Text.Json;
 
 namespace Loom.App
 {
@@ -27,10 +28,11 @@ namespace Loom.App
             ASTGenerator astGenerator = new ASTGenerator(lexTokens);
             StatementList statements = astGenerator.ParseStatements();
 
-            PrettyPrinter prettyPrinter = new PrettyPrinter(PrettyPrinterSettings.Minify);
+            PrettyPrinter prettyPrinter = new PrettyPrinter(PrettyPrinterSettings.Beautify);
 
             Console.WriteLine("Amount of statements; " + statements.Count.ToString());
-            statements.LogAsJson();
+            statements.ForEach(t => t.Log());
+            ((AssignmentStatement)statements.ElementAt(1)).Variables.ForEach(t => t.Log("---- "));
             Console.WriteLine("Original;");
             Console.WriteLine(prettyPrinter.Print(statements));
 
