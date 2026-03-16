@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+/* This lexer is specified for Lua */
+
 namespace Loom.Parser.Lexer
 {
     public class LexicalAnalyser
@@ -43,7 +45,7 @@ namespace Loom.Parser.Lexer
 
         LexKind Identify(string Value)
         {
-            if (double.TryParse(Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
+            if (ulong.TryParse(Value, out _))
                 return LexKind.Number;
 
             if (Value == "false"
@@ -71,61 +73,7 @@ namespace Loom.Parser.Lexer
                     case '(': kind = LexKind.ParentheseOpen; break;
                     case ')': kind = LexKind.ParentheseClose; break;
 
-                    case '[':
-                        {
-                            int j = i + 1;
-                            if (j < Input.Length && (Input[j] == '[' || Input[j] == '='))
-                            {
-                                int eq = 0;
-
-                                while (j < Input.Length && Input[j] == '=')
-                                {
-                                    eq++;
-                                    j++;
-                                }
-                                if (j < Input.Length && Input[j] == '[')
-                                {
-                                    i = j + 1;
-                                    while (i < Input.Length)
-                                    {
-                                        if (Input[i] == '\n')
-                                        {
-                                            Line++;
-                                            sb.Append(Input[i]);
-                                            i++;
-                                            continue;
-                                        }
-
-                                        if (Input[i] == ']')
-                                        {
-                                            int k = i + 1;
-                                            int eq2 = 0;
-                                            while (k < Input.Length && Input[k] == '=')
-                                            {
-                                                eq2++;
-                                                k++;
-                                            }
-                                            if (k < Input.Length && Input[k] == ']' && eq2 == eq)
-                                            {
-                                                i = k;
-                                                break;
-                                            }
-                                        }
-
-                                        sb.Append(Input[i]);
-                                        i++;
-                                    }
-
-                                    value = sb.ToString();
-                                    kind = LexKind.String;
-                                    sb.Clear();
-                                    break;
-                                }
-                            }
-
-                            kind = LexKind.BracketOpen;
-                            break;
-                        }
+                    case '[': kind = LexKind.BracketOpen; break;
                     case ']': kind = LexKind.BracketClose; break;
 
                     case '{': kind = LexKind.BraceOpen; break;
@@ -133,7 +81,7 @@ namespace Loom.Parser.Lexer
 
                     case '<':
                         {
-                            if (i + 1 < Input.Length && Input[i + 1] == '=')
+                            if(Input[i + 1] == '=')
                             {
                                 kind = LexKind.SmallerOrEqual;
                                 i++;
@@ -146,7 +94,7 @@ namespace Loom.Parser.Lexer
                         }
                     case '>':
                         {
-                            if (i + 1 < Input.Length && Input[i + 1] == '=')
+                            if (Input[i + 1] == '=')
                             {
                                 kind = LexKind.BiggerOrEqual;
                                 i++;
@@ -162,42 +110,33 @@ namespace Loom.Parser.Lexer
 
                     case ';': kind = LexKind.Semicolon; break;
 
+                    case ':': kind = LexKind.Colon; break;
+
                     case ',': kind = LexKind.Comma; break;
 
                     case '.':
                         {
-                            if (i + 1 < Input.Length && Input[i + 1] == '.')
+                            kind = LexKind.Dot;
+
+                            if(Input[i + 1] == '.')
                             {
-                                if (i + 2 < Input.Length && Input[i + 2] == '.')
+                                kind = LexKind.Concat;
+                                i++;
+                                if (Input[i + 1] == '.')
                                 {
+                                    i++;
                                     kind = LexKind.Vararg;
-                                    i += 2;
-                                }
-                                else
-                                {
-                                    kind = LexKind.Concat;
-                                    i += 1;
                                 }
                             }
-                            else
-                            {
-                                kind = LexKind.Dot;
-                            }
+
                             break;
                         }
 
                     case '"':
                         {
                             i++;
-                            while (i < Input.Length && Input[i] != '"')
+                            while (Input[i] != '"')
                             {
-                                if (Input[i] == '\\' && i + 1 < Input.Length)
-                                {
-                                    sb.Append(Input[i]);
-                                    sb.Append(Input[i + 1]);
-                                    i += 2;
-                                    continue;
-                                }
                                 sb.Append(Input[i]);
                                 i++;
                             }
@@ -211,14 +150,11 @@ namespace Loom.Parser.Lexer
                     case '\'':
                         {
                             i++;
-                            while (i < Input.Length && Input[i] != '\'')
+                            while (Input[i] != '\'')
                             {
-                                if (Input[i] == '\\' && i + 1 < Input.Length)
+                                if (Input[i] == '\\' && Input[i + 1] == '\'')
                                 {
-                                    sb.Append(Input[i]);
-                                    sb.Append(Input[i + 1]);
-                                    i += 2;
-                                    continue;
+                                    i++;
                                 }
                                 sb.Append(Input[i]);
                                 i++;
@@ -232,7 +168,7 @@ namespace Loom.Parser.Lexer
 
                     case '=':
                         {
-                            if (i + 1 < Input.Length && Input[i + 1] == '=')
+                            if(Input[i + 1] == '=')
                             {
                                 kind = LexKind.EqualTo;
                                 i++;
@@ -246,7 +182,7 @@ namespace Loom.Parser.Lexer
 
                     case '~':
                         {
-                            if (i + 1 < Input.Length && Input[i + 1] == '=')
+                            if (Input[i + 1] == '=')
                             {
                                 kind = LexKind.NotEqualTo;
                                 i++;
@@ -277,6 +213,11 @@ namespace Loom.Parser.Lexer
                             kind = LexKind.Add;
                             break;
                         }
+                    case '-':
+                        {
+                            kind = LexKind.Sub;
+                            break;
+                        }
                     case '*':
                         {
                             kind = LexKind.Mul;
@@ -284,6 +225,7 @@ namespace Loom.Parser.Lexer
                         }
                     case '/':
                         {
+                            
                             kind = LexKind.Div;
                             break;
                         }
@@ -299,117 +241,29 @@ namespace Loom.Parser.Lexer
                             break;
                         }
 
+                    // Discard
                     case ' ':
                     case '\r':
                     case '\t':
                         break;
 
-                    case ':':
-                        {
-                            kind = LexKind.Colon;
-                            break;
-                        }
-
-                    case '-':
-                        {
-                            if (i + 1 < Input.Length && Input[i + 1] == '-')
-                            {
-                                i += 2;
-                                if (i < Input.Length && Input[i] == '[')
-                                {
-                                    int j = i + 1;
-                                    int eq = 0;
-                                    while (j < Input.Length && Input[j] == '=') { eq++; j++; }
-                                    if (j < Input.Length && Input[j] == '[')
-                                    {
-                                        i = j + 1;
-                                        while (i < Input.Length)
-                                        {
-                                            if (Input[i] == '\n')
-                                            {
-                                                Line++;
-                                                sb.Append(Input[i]);
-                                                i++;
-                                                continue;
-                                            }
-
-                                            if (Input[i] == ']')
-                                            {
-                                                int k = i + 1;
-                                                int eq2 = 0;
-                                                while (k < Input.Length && Input[k] == '=') { eq2++; k++; }
-                                                if (k < Input.Length && Input[k] == ']' && eq2 == eq)
-                                                {
-                                                    i = k;
-                                                    break;
-                                                }
-                                            }
-
-                                            sb.Append(Input[i]);
-                                            i++;
-                                        }
-
-                                        value = sb.ToString();
-                                        sb.Clear();
-                                        kind = LexKind.Comment;
-                                        break;
-                                    }
-                                }
-
-                                while (i < Input.Length && Input[i] != '\n')
-                                {
-                                    sb.Append(Input[i]);
-                                    i++;
-                                }
-                                value = sb.ToString();
-                                sb.Clear();
-                                kind = LexKind.Comment;
-                                break;
-                            }
-                            kind = LexKind.Sub;
-                            break;
-                        }
-
                     default:
                         {
-                            if (Char.IsLetter(Input[i]) || Input[i] == '_')
+                            if (Char.IsLetterOrDigit(Input[i])
+                                || Input[i] == '.'
+                                || Input[i] == '_'
+                                || Input[i] == ':')
                             {
-                                while (i < Input.Length && (Char.IsLetterOrDigit(Input[i]) || Input[i] == '_'))
+                                while (Input.Length > i && (Char.IsLetterOrDigit(Input[i]) || Input[i] == '.' || Input[i] == ':' || Input[i] == '_'))
                                 {
                                     sb.Append(Input[i++]);
                                 }
                                 i--;
-                                value = sb.ToString();
-                                kind = Identify(value);
-                                sb.Clear();
-                                break;
                             }
+                            value = sb.ToString();
+                            kind = Identify(value);
 
-                            if (Char.IsDigit(Input[i]))
-                            {
-                                int start = i;
-                                while (i < Input.Length && Char.IsDigit(Input[i]))
-                                    i++;
-                                if (i < Input.Length && Input[i] == '.')
-                                {
-                                    i++;
-                                    while (i < Input.Length && Char.IsDigit(Input[i]))
-                                        i++;
-                                }
-                                if (i < Input.Length && (Input[i] == 'e' || Input[i] == 'E'))
-                                {
-                                    i++;
-                                    if (i < Input.Length && (Input[i] == '+' || Input[i] == '-'))
-                                        i++;
-                                    while (i < Input.Length && Char.IsDigit(Input[i]))
-                                        i++;
-                                }
-                                value = Input.Substring(start, i - start);
-                                kind = LexKind.Number;
-                                i--;
-                                break;
-                            }
-
+                            sb.Clear();
                             break;
                         }
                 }

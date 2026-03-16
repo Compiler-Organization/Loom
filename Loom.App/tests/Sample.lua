@@ -1,2 +1,2 @@
-﻿local ah = 0
-ah += 1
+﻿local arr = { ["test"] = 3 }
+print(arr["test"])

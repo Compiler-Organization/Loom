@@ -4,168 +4,527 @@ using Loom.Parser.Lexer.Objects;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Loom.Parser.Lexer;
+using System.Text;
+using System.Threading.Tasks;
 using Loom.Parser.ASTGenerator.AST;
+using System.Runtime.InteropServices;
+using Loom.Parser.Lexer;
+using System.Threading;
 
 namespace Loom.Parser.ASTGenerator
 {
     /// <summary>
-    /// Parse Lua code into an abstract syntax tree
+    /// Abstract syntax tree generator
     /// </summary>
     public class ASTGenerator
     {
-        LexTokenReader TokenReader { get; set; }
+        /// <summary>
+        /// The token reader of the AST generator
+        /// </summary>
+        LexTokenReader tokenReader { get; set; }
 
+        /// <summary>
+        /// <inheritdoc/>
+        /// </summary>
+        /// <param name="lexTokens"></param>
         public ASTGenerator(LexTokenList lexTokens)
         {
-            this.TokenReader = new LexTokenReader(lexTokens);
+            this.tokenReader = new LexTokenReader(lexTokens);
         }
 
-        enum Precedence
-        {
-            Lowest = 0,
-            Or = 1,
-            And = 2,
-            Relational = 3,
-            Concat = 4,
-            AddSub = 5,
-            MulDiv = 6,
-            Exponent = 7,
-            Unary = 8,
-            Postfix = 9,
-            Call = 10
-        }
+        /* Expressions */
 
-        public StatementList ParseStatements()
+        bool ParseIndexExpression(Expression array, out IndexExpression indexExpression)
         {
-            StatementList statementList = new StatementList();
+            indexExpression = new IndexExpression();
+            indexExpression.Array = array;
 
-            while (!TokenReader.Expect(LexKind.EOF) && !IsBlockTerminator())
+            if(tokenReader.Expect(LexKind.BracketOpen))
             {
-                Statement statement = ParseStatement();
-                if (statement != null)
+                tokenReader.Skip(1);
+                if(ParseExpression(out Expression index))
                 {
-                    statementList.Add(statement);
-                }
-
-                while (TokenReader.Expect(LexKind.Semicolon) || TokenReader.Expect(LexKind.NewLine))
-                {
-                    TokenReader.Consume();
+                    indexExpression.Index = index;
+                    if(tokenReader.Expect(LexKind.BracketClose))
+                    {
+                        tokenReader.Skip(1);
+                        return true;
+                    }
                 }
             }
 
-            return statementList;
+            return false;
         }
 
-        bool IsBlockTerminator()
+        bool ParseArrayExpression(out ArrayExpression arrayExpression)
         {
-            if (!TokenReader.Expect(LexKind.Keyword))
+            arrayExpression = new ArrayExpression();
+
+            if(tokenReader.Expect(LexKind.BraceOpen))
+            {
+                tokenReader.Skip(1);
+
+                if(tokenReader.Expect(LexKind.BraceClose))
+                {
+                    tokenReader.Skip(1);
+                    return true;
+                }
+
+                arrayExpression.Array = ParseExpressions(true);
+
+                if (tokenReader.ExpectFatal(LexKind.BraceClose))
+                {
+                    tokenReader.Skip(1);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseCallExpression(Expression left, out CallExpression callExpression)
+        {
+            callExpression = new CallExpression();
+            callExpression.Operand = left;
+
+            if (tokenReader.Expect(LexKind.ParentheseOpen))
+            {
+                tokenReader.Skip(1);
+
+                callExpression.Arguments = ParseExpressions();
+
+                if (tokenReader.ExpectFatal(LexKind.ParentheseClose))
+                {
+                    tokenReader.Skip(1);
+                    return true;
+                }
+            }
+
+            return false; 
+        }
+
+        bool ParseConcatExpression(Expression left, out ConcatExpression concatExpression)
+        {
+            concatExpression = new ConcatExpression();
+            concatExpression.Left = left;
+
+            switch (tokenReader.Peek().Kind)
+            {
+                case LexKind.Concat:
+                    {
+                        tokenReader.Skip(1);
+                        if (ParseExpression(out Expression right))
+                        {
+                            concatExpression.Right = right;
+                            return true;
+                        }
+                        break;
+                    }
+            }
+
+            return false;
+        }
+
+        bool ParseArithmeticExpression(Expression left, out ArithmeticExpression arithmeticExpression)
+        {
+            arithmeticExpression = new ArithmeticExpression();
+            arithmeticExpression.Left = left;
+
+            ArithmeticOperators binaryOperator = ArithmeticOperators.Unknown;
+
+            switch (tokenReader.Peek().Kind)
+            {
+                case LexKind.Add: binaryOperator = ArithmeticOperators.Addition; break;
+                case LexKind.Sub: binaryOperator = ArithmeticOperators.Subtraction; break;
+                case LexKind.Mul: binaryOperator = ArithmeticOperators.Multiplication; break;
+                case LexKind.Div: binaryOperator = ArithmeticOperators.Division; break;
+                case LexKind.Mod: binaryOperator = ArithmeticOperators.Modulus; break;
+                case LexKind.Exp: binaryOperator = ArithmeticOperators.Exponentiation; break;
+            }
+            
+            if(binaryOperator != ArithmeticOperators.Unknown)
+            {
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression right))
+                {
+                    arithmeticExpression.Right = right;
+                    arithmeticExpression.Operator = binaryOperator;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseRelationalExpression(Expression left, out RelationalExpression relationalExpression)
+        {
+            relationalExpression = new RelationalExpression();
+            relationalExpression.Left = left;
+
+            switch(tokenReader.Peek().Kind)
+            {
+                case LexKind.EqualTo:
+                case LexKind.NotEqualTo:
+                case LexKind.BiggerOrEqual:
+                case LexKind.SmallerOrEqual:
+                case LexKind.ChevronOpen:
+                case LexKind.ChevronClose:
+                    {
+                        switch (tokenReader.Peek().Kind)
+                        {
+                            case LexKind.Equals: relationalExpression.Operator = RelationalOperators.EqualTo; break;
+                            case LexKind.NotEqualTo: relationalExpression.Operator = RelationalOperators.NotEqualTo; break;
+                            case LexKind.BiggerOrEqual: relationalExpression.Operator = RelationalOperators.BiggerOrEqual; break;
+                            case LexKind.SmallerOrEqual: relationalExpression.Operator = RelationalOperators.SmallerOrEqual; break;
+                            case LexKind.ChevronOpen: relationalExpression.Operator = RelationalOperators.SmallerThan; break;
+                            case LexKind.ChevronClose: relationalExpression.Operator = RelationalOperators.BiggerThan; break;
+                        }
+
+                        tokenReader.Skip(1);
+                        if (ParseExpression(out Expression right))
+                        {
+                            relationalExpression.Right = right;
+                            return true;
+                        }
+                        break;
+                    }
+            }
+
+            return false;
+        }
+
+        bool ParseLogicalExpression(Expression left, out LogicalExpression logicalExpression)
+        {
+            logicalExpression = new LogicalExpression();
+            logicalExpression.Left = left;
+
+            if (tokenReader.Expect(LexKind.Keyword))
+            {
+                switch(tokenReader.Peek().Value)
+                {
+                    case "and": logicalExpression.Operator = LogicalOperators.And; break;
+                    case "or": logicalExpression.Operator = LogicalOperators.Or; break;
+                    case "not": logicalExpression.Operator = LogicalOperators.Not; break;
+                    default: return false;
+                }
+
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression right))
+                {
+                    logicalExpression.Right = right;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseConstantExpression(out ConstantExpression constantExpression)
+        {
+            constantExpression = new ConstantExpression();
+
+            if(tokenReader.Peek().Kind == LexKind.String
+                || tokenReader.Peek().Kind == LexKind.Boolean
+                || tokenReader.Peek().Kind == LexKind.Number)
+            {
+                switch (tokenReader.Peek().Kind)
+                {
+                    case LexKind.String:
+                        {
+                            constantExpression.Type = DataTypes.String;
+                            break;
+                        }
+                    case LexKind.Boolean:
+                        {
+                            constantExpression.Type = DataTypes.Bool;
+                            break;
+                        }
+                    case LexKind.Number:
+                        {
+                            constantExpression.Type = DataTypes.Number;
+                            break;
+                        }
+                }
+
+                constantExpression.Value = tokenReader.Consume().Value;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseIdentifierExpression(out IdentifierExpression identifierExpression)
+        {
+            identifierExpression = new IdentifierExpression();
+
+            if(tokenReader.Expect(LexKind.Identifier))
+            {
+                identifierExpression.Identifier = tokenReader.Consume().Value;
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseFunctionDeclarationExpression(out FunctionDeclarationExpression functionDeclarationExpression)
+        {
+            functionDeclarationExpression = new FunctionDeclarationExpression();
+
+            if(tokenReader.Expect(LexKind.Keyword) && tokenReader.Peek().Value == "function")
+            {
+                tokenReader.Skip(1);
+                if(ParseIdentifierExpression(out IdentifierExpression identifierExpression))
+                {
+                    functionDeclarationExpression.Name = identifierExpression;
+                    functionDeclarationExpression.IsAnonymous = false;
+                }
+
+                if (tokenReader.ExpectFatal(LexKind.ParentheseOpen))
+                {
+                    tokenReader.Skip(1);
+                    functionDeclarationExpression.Parameters = ParseExpressions();
+                    tokenReader.Skip(1);
+                    functionDeclarationExpression.Body = ParseStatements();
+
+                    if (tokenReader.Expect(LexKind.Keyword, "end"))
+                    {
+                        tokenReader.Skip(1);
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // TODO: Add all the assignment operators
+        bool ParseAssignmentExpression(Expression left, out AssignmentExpression assignmentExpression)
+        {
+            assignmentExpression = new AssignmentExpression();
+            assignmentExpression.Variables.Add(left);
+
+
+            switch (tokenReader.Peek().Kind)
+            {
+                case LexKind.Equals:
+                    {
+                        tokenReader.Skip(1);
+                        if (ParseExpression(out Expression right))
+                        {
+                            assignmentExpression.Values.Add(right);
+                            return true;
+                        }
+                        break;
+                    }
+            }
+
+
+
+            return false;
+        }
+
+        bool ParseIfExpression(out IfExpression ifExpression)
+        {
+            ifExpression = new IfExpression();
+
+            if (tokenReader.Expect(LexKind.Keyword, "if"))
+            {
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression condition))
+                {
+                    ifExpression.Condition = condition;
+                    if (tokenReader.Expect(LexKind.Keyword, "then"))
+                    {
+                        tokenReader.Skip(1);
+                        if(ParseExpression(out Expression expression))
+                        {
+                            ifExpression.Body = expression;
+                        }
+
+                        for (; ; )
+                        {
+                            if (tokenReader.Expect(LexKind.Keyword, "elseif"))
+                            {
+                                tokenReader.Skip(1);
+                                IfExpression elseIfExpression = new IfExpression();
+
+                                if (ParseExpression(out Expression elseIfConditionExpression))
+                                {
+                                    elseIfExpression.Condition = elseIfConditionExpression;
+                                    if (tokenReader.Expect(LexKind.Keyword, "then"))
+                                    {
+                                        tokenReader.Skip(1);
+                                        if (ParseExpression(out Expression elseIfBodyExpression))
+                                        {
+                                            elseIfExpression.Body = elseIfBodyExpression;
+                                            ifExpression.ElseIfExpressions.Add(elseIfExpression);
+                                        }
+                                    }
+                                }
+                                continue;
+                            }
+
+                            if (tokenReader.Expect(LexKind.Keyword, "else"))
+                            {
+                                tokenReader.Skip(1);
+                                if(ParseExpression(out Expression elseExpression))
+                                {
+                                    ifExpression.ElseExpression = elseExpression;
+                                }
+                                continue;
+                            }
+
+                            break;
+                        }
+
+
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseVarargExpression(out VarargExpression varargExpression)
+        {
+            varargExpression = new VarargExpression();
+
+            if (tokenReader.Expect(LexKind.Vararg))
+            {
+                tokenReader.Skip(1);
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseLengthExpression(out LengthExpression lengthExpression)
+        {
+            lengthExpression = new LengthExpression();
+
+            if (tokenReader.Expect(LexKind.Hashtag))
+            {
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression expression))
+                {
+                    lengthExpression.Expression = expression;
+                    return true;
+                }
+
+                throw new Exception("Length expression missing expression");
+            }
+
+            return false;
+        }
+        bool ParseNegativeExpression(out NegativeExpression negativeExpression)
+        {
+            negativeExpression = new NegativeExpression();
+
+            if (tokenReader.Expect(LexKind.Sub))
+            {
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression expression))
+                {
+                    negativeExpression.Expression = expression;
+                    return true;
+                }
+
+                throw new Exception("Negative expression missing expression");
+            }
+
+            return false;
+        }
+
+        bool ParseNilExpression(out NilExpression nilExpression)
+        {
+            nilExpression = new NilExpression();
+
+            if(tokenReader.Expect(LexKind.Keyword, "nil"))
+            {
+                tokenReader.Skip(1);
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseGroupedExpression(out GroupedExpression groupedExpression)
+        {
+            groupedExpression = new GroupedExpression();
+
+            if(tokenReader.Expect(LexKind.ParentheseOpen))
+            {
+                tokenReader.Skip(1);
+
+                if(tokenReader.Expect(LexKind.ParentheseClose))
+                {
+                    groupedExpression = null;
+                    return true;
+                }
+
+                if (ParseExpression(out Expression expression))
+                {
+                    groupedExpression.Expression = expression;
+                    
+                    if(tokenReader.ExpectFatal(LexKind.ParentheseClose))
+                    {
+                        tokenReader.Skip(1);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        bool ParseFunctionExpression(Expression leftExpression, out Expression expression)
+        {
+            expression = leftExpression;
+
+            if (ParseGroupedExpression(out GroupedExpression groupedExpression))
+            {
+                expression = groupedExpression;
+            }
+
+            if (ParseFunctionDeclarationExpression(out FunctionDeclarationExpression functionDeclarationExpression))
+            {
+                expression = functionDeclarationExpression;
+            }
+
+            if (ParseIdentifierExpression(out IdentifierExpression identifierExpression))
+            {
+                expression = identifierExpression;
+            }
+
+            if (ParseIndexExpression(expression, out IndexExpression indexExpression))
+            {
+                expression = indexExpression;
+            }
+
+
+            if(expression == null)
             {
                 return false;
             }
 
-            string value = TokenReader.Peek().Value;
-            return value == "end" 
-                || value == "else" 
-                || value == "elseif" 
-                || value == "until";
+            return true;
         }
 
-        Statement ParseStatement()
+        bool ParseFunctionExpressions(out ExpressionList expressionList)
         {
-            if (TokenReader.Expect(LexKind.Keyword))
+            expressionList = new ExpressionList();
+
+            for (; ; )
             {
-                switch (TokenReader.Peek().Value)
+                if (ParseFunctionExpression(null, out Expression expression))
                 {
-                    case "local": return ParseLocalDeclaration();
-                    case "function": return ParseFunctionDeclarationStatement(false);
-                    case "if": return ParseIfStatement();
-                    case "while": return ParseWhileStatement();
-                    case "for": return ParseForStatement();
-                    case "repeat": return ParseRepeatStatement();
-                    case "do": return ParseDoStatement();
-                    case "break": TokenReader.Skip(1); return new BreakStatement();
-                    case "continue": TokenReader.Skip(1); return new ContinueStatement();
-                    case "return": return ParseReturnStatement();
-                }
-            }
-
-            ExpressionList expressions = ParseExpressionList();
-            if (expressions == null || expressions.Count == 0)
-            {
-                return null;
-            }
-
-            if (expressions.Count == 1 && expressions[0] is CallExpression callExpr)
-            {
-                return new CallStatement 
-                { 
-                    Function = callExpr.Operand, 
-                    Arguments = callExpr.Arguments 
-                };
-            }
-
-            if (TokenReader.Expect(LexKind.Equals))
-            {
-                TokenReader.Skip(1);
-
-                ExpressionList valueExpressions = ParseExpressionList() ?? new ExpressionList();
-                if (valueExpressions.Count == 0)
-                {
-                    throw new Exception("Assignment without values");
+                    expressionList.Add(expression);
                 }
 
-                return new AssignmentStatement 
-                { 
-                    Variables = expressions, 
-                    Values = valueExpressions 
-                };
-            }
-
-            if (expressions.Count == 1 && expressions[0] is AssignmentExpression assignmentExpression)
-            {
-                return new AssignmentStatement 
-                { 
-                    Variables = assignmentExpression.Variables, 
-                    Values = assignmentExpression.Values 
-                };
-            }
-
-            throw new Exception("Unsupported statement starting with token: " + TokenReader.Peek().Kind + " " + TokenReader.Peek().Value);
-        }
-
-        Statement ParseLocalDeclaration()
-        {
-            TokenReader.Skip(1);
-
-            if (TokenReader.Expect(LexKind.Keyword) && TokenReader.Peek().Value == "function")
-            {
-                return ParseFunctionDeclarationStatement(true);
-            }
-
-            ExpressionList expressions = new ExpressionList();
-            while (true)
-            {
-                if (!TokenReader.Expect(LexKind.Identifier) && !TokenReader.Expect(LexKind.Vararg))
+                if (tokenReader.Expect(LexKind.Comma))
                 {
-                    throw new Exception("Expected identifier in local declaration");
-                }
-
-                if (TokenReader.Expect(LexKind.Identifier))
-                {
-                    expressions.Add(new IdentifierExpression 
-                    { 
-                        Identifier = TokenReader.Consume().Value 
-                    });
-                }
-                else
-                {
-                    expressions.Add(new VarargExpression());
-                }
-
-                if (TokenReader.Expect(LexKind.Comma))
-                {
-                    TokenReader.Skip(1);
+                    tokenReader.Skip(1);
                 }
                 else
                 {
@@ -173,767 +532,882 @@ namespace Loom.Parser.ASTGenerator
                 }
             }
 
-            ExpressionList vals = new ExpressionList();
-            if (TokenReader.Expect(LexKind.Equals))
+            if(expressionList.Count == 0)
             {
-                TokenReader.Skip(1);
-                vals = ParseExpressionList() ?? new ExpressionList();
+                return false;
             }
 
-            LocalDeclarationStatement local = new LocalDeclarationStatement();
-            local.Statement = new AssignmentStatement 
-            { 
-                Variables = expressions, 
-                Values = vals 
-            };
-
-            return local;
+            return true;
         }
 
-        Statement ParseFunctionDeclarationStatement(bool isLocal)
+        // Unused as of now
+        bool ParseVariableExpression(Expression leftExpression, out Expression expression)
         {
-            if (TokenReader.Expect(LexKind.Keyword) && TokenReader.Peek().Value == "function")
+            expression = leftExpression;
+
+            if (ParseIdentifierExpression(out IdentifierExpression identifierExpression))
             {
-                TokenReader.Skip(1);
+                expression = identifierExpression;
             }
 
-            IdentifierExpression name = null;
-            if (TokenReader.Expect(LexKind.Identifier))
+            if (ParseIndexExpression(expression, out IndexExpression indexExpression))
             {
-                name = new IdentifierExpression 
-                { 
-                    Identifier = TokenReader.Consume().Value 
-                };
+                expression = indexExpression;
             }
 
-            if (!TokenReader.Expect(LexKind.ParentheseOpen))
+
+            if (expression == null)
             {
-                throw new Exception("Expected '(' after function name");
+                return false;
             }
 
-            TokenReader.Skip(1);
-            ExpressionList parameters = new ExpressionList();
-            while (!TokenReader.Expect(LexKind.ParentheseClose))
+            return true;
+        }
+
+        bool ParseVariableExpressions(out ExpressionList expressionList)
+        {
+            expressionList = new ExpressionList();
+
+            for (; ; )
             {
-                if (TokenReader.Expect(LexKind.Identifier))
+                if (ParseVariableExpression(null, out Expression expression))
                 {
-                    parameters.Add(new IdentifierExpression 
-                    { 
-                        Identifier = TokenReader.Consume().Value 
-                    });
+                    expressionList.Add(expression);
                 }
-                else if (TokenReader.Expect(LexKind.Vararg))
+
+                if (tokenReader.Expect(LexKind.Comma))
                 {
-                    parameters.Add(new VarargExpression());
-                    TokenReader.Skip(1);
+                    tokenReader.Skip(1);
                 }
                 else
                 {
                     break;
                 }
-
-                if (TokenReader.Expect(LexKind.Comma))
-                {
-                    TokenReader.Skip(1);
-                }
-            }
-            if (TokenReader.Expect(LexKind.ParentheseClose))
-            {
-                TokenReader.Skip(1);
             }
 
-            StatementList body = ParseStatements();
-            if (TokenReader.Expect(LexKind.Keyword, "end"))
+            if (expressionList.Count == 0)
             {
-                TokenReader.Skip(1);
+                return false;
             }
 
-            FunctionDeclarationStatement funcStmt = new FunctionDeclarationStatement
-            {
-                IsLocal = isLocal,
-                Name = name,
-                Parameters = parameters,
-                Body = body
-            };
-            return funcStmt;
+            return true;
         }
 
-        Statement ParseIfStatement()
+        bool ParseNotExpression(out NotExpression notExpression)
         {
-            TokenReader.Skip(1);
-            Expression cond = ParseExpression();
-            if (!TokenReader.Expect(LexKind.Keyword, "then"))
-            {
-                throw new Exception("Expected 'then' after if condition");
-            }
-            TokenReader.Skip(1);
-            StatementList body = ParseStatements();
+            notExpression = new NotExpression();
 
-            IfStatement ifStmt = new IfStatement
+            if (tokenReader.Expect(LexKind.Keyword, "not"))
             {
-                Condition = cond,
-                Body = body
-            };
-
-            while (TokenReader.Expect(LexKind.Keyword) && TokenReader.Peek().Value == "elseif")
-            {
-                TokenReader.Skip(1);
-                Expression elifCond = ParseExpression();
-
-                if (!TokenReader.Expect(LexKind.Keyword, "then"))
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression expression))
                 {
-                    throw new Exception("Expected 'then' after elseif condition");
+                    notExpression.Expression = expression;
+                    return true;
                 }
-                TokenReader.Skip(1);
-                StatementList elifBody = ParseStatements();
-                IfStatement elseIfStmt = new IfStatement
-                {
-                    Condition = elifCond,
-                    Body = elifBody
-                };
-                ifStmt.ElseIfStatements.Add(elseIfStmt);
+
+                throw new Exception("Not expression missing expression");
             }
 
-            if (TokenReader.Expect(LexKind.Keyword, "else"))
-            {
-                TokenReader.Skip(1);
-                ifStmt.ElseStatements = ParseStatements();
-            }
-
-            if (TokenReader.Expect(LexKind.Keyword, "end"))
-            {
-                TokenReader.Skip(1);
-            }
-
-            return ifStmt;
+            return false;
         }
 
-        Statement ParseWhileStatement()
+        bool ParseMemberExpression(Expression parentExpression, out MemberExpression memberExpression)
         {
-            TokenReader.Skip(1);
-            Expression cond = ParseExpression();
-            if (!TokenReader.Expect(LexKind.Keyword, "do"))
+            memberExpression = new MemberExpression();
+
+            if (tokenReader.Expect(LexKind.Dot))
             {
-                throw new Exception("Expected 'do' after while condition");
-            }
-            TokenReader.Skip(1);
-            StatementList body = ParseStatements();
-            if (TokenReader.Expect(LexKind.Keyword, "end"))
-            {
-                TokenReader.Skip(1);
+                tokenReader.Skip(1);
+                memberExpression.IsInvoke = false;
+
+                if (ParseExpression(out Expression expression))
+                {
+                    memberExpression.Parent = parentExpression;
+                    memberExpression.Expression = expression;
+                    return true;
+                }
+
+                throw new Exception($"Line {tokenReader.Peek().Line}: Invalid member expression");
             }
 
-            return new WhileStatement
+            if(tokenReader.Expect(LexKind.Colon))
             {
-                Condition = cond,
-                Body = body
-            };
+                tokenReader.Skip(1);
+                memberExpression.IsInvoke = true;
+
+                if (ParseExpression(out Expression expression))
+                {
+                    memberExpression.Parent = parentExpression;
+                    memberExpression.Expression = expression;
+                    return true;
+                }
+
+                throw new Exception($"Line {tokenReader.Peek().Line}: Invalid member expression");
+            }
+
+            return false;
         }
 
-        Statement ParseForStatement()
+        bool ParseRecordExpression(out RecordExpression recordExpression)
         {
-            TokenReader.Skip(1);
+            recordExpression = new RecordExpression();
 
-            if (TokenReader.Expect(LexKind.Identifier) && TokenReader.Expect(LexKind.Equals, 1))
+            if(tokenReader.Expect(LexKind.BracketOpen))
             {
-                IdentifierExpression id = new IdentifierExpression
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression expression))
                 {
-                    Identifier = TokenReader.Consume().Value
-                };
-                TokenReader.Skip(1);
-
-                Expression start = ParseExpression();
-                if (!TokenReader.Expect(LexKind.Comma))
-                {
-                    throw new Exception("Expected ',' in numeric for");
-                }
-                TokenReader.Skip(1);
-
-                Expression end = ParseExpression();
-                Expression step = null;
-                if (TokenReader.Expect(LexKind.Comma))
-                { 
-                    TokenReader.Skip(1); step = ParseExpression(); 
-                }
-
-                if (!TokenReader.Expect(LexKind.Keyword, "do"))
-                {
-                    throw new Exception("Expected 'do' in for");
-                }
-                TokenReader.Skip(1);
-
-                StatementList body = ParseStatements();
-                if (TokenReader.Expect(LexKind.Keyword, "end"))
-                {
-                    TokenReader.Skip(1);
-                }
-
-                AssignmentExpression assignmentExpression = new AssignmentExpression();
-                assignmentExpression.Variables.Add(id);
-                assignmentExpression.Values.Add(start);
-
-                ForStatement forStatement = new ForStatement
-                {
-                    ControlVariable = assignmentExpression,
-                    EndValue = end,
-                    Increment = step,
-                    Body = body
-                };
-                return forStatement;
-            }
-
-            ExpressionList vars = new ExpressionList();
-            if (TokenReader.Expect(LexKind.Identifier))
-            {
-                vars.Add(new IdentifierExpression 
-                { 
-                    Identifier = TokenReader.Consume().Value
-                });
-
-                while (TokenReader.Expect(LexKind.Comma))
-                {
-                    TokenReader.Skip(1);
-                    if (TokenReader.Expect(LexKind.Identifier))
+                    recordExpression.Expression = expression;
+                    if(tokenReader.ExpectFatal(LexKind.BracketClose))
                     {
-                        vars.Add(new IdentifierExpression { Identifier = TokenReader.Consume().Value });
+                        tokenReader.Skip(1);
+                        return true;
                     }
                 }
             }
 
-            if (!TokenReader.Expect(LexKind.Keyword, "in"))
-            {
-                throw new Exception("Expected 'in' in generic for");
-            }
-
-            TokenReader.Skip(1);
-            Expression iterator = ParseExpression();
-            if (!TokenReader.Expect(LexKind.Keyword, "do"))
-            {
-                throw new Exception("Expected 'do' in for");
-            }
-            TokenReader.Skip(1);
-            StatementList body2 = ParseStatements();
-            if (TokenReader.Expect(LexKind.Keyword, "end")) TokenReader.Skip(1);
-
-            GenericForStatement genericForStatement = new GenericForStatement
-            {
-                Iterator = iterator,
-                Body = body2
-            };
-
-            foreach (Expression v in vars)
-            {
-                genericForStatement.VariableArray.Array.Add((IdentifierExpression)v);
-            }
-            return genericForStatement;
+            return false;
         }
 
-        Statement ParseRepeatStatement()
+        bool ParseSingleExpression(out Expression expression)
         {
-            TokenReader.Skip(1);
-            StatementList body = ParseStatements();
-            if (!TokenReader.Expect(LexKind.Keyword, "until"))
+            expression = null;
+
+            if (ParseConstantExpression(out ConstantExpression constantExpression))
             {
-                throw new Exception("Expected 'until' in repeat");
+                expression = constantExpression;
+                return true;
+            }
+            if (ParseGroupedExpression(out GroupedExpression groupedExpression))
+            {
+                expression = groupedExpression;
+                return true;
+            }
+            if (ParseNegativeExpression(out NegativeExpression negativeExpression))
+            {
+                expression = negativeExpression;
+                return true;
+            }
+            if (ParseLengthExpression(out LengthExpression lengthExpression))
+            {
+                expression = lengthExpression;
+                return true;
+            }
+            if (ParseNotExpression(out NotExpression notExpression))
+            {
+                expression = notExpression;
+                return true;
+            }
+            if (ParseNilExpression(out NilExpression nilExpression))
+            {
+                expression = nilExpression;
+                return true;
+            }
+            if (ParseIdentifierExpression(out IdentifierExpression identifierExpression))
+            {
+                expression = identifierExpression;
+                return true;
+            }
+            if (ParseVarargExpression(out VarargExpression varargExpression))
+            {
+                expression = varargExpression;
+                return true;
+            }
+            if (ParseArrayExpression(out ArrayExpression tableExpression))
+            {
+                expression = tableExpression;
+                return true;
+            }
+            if(ParseRecordExpression(out RecordExpression recordExpression))
+            {
+                expression = recordExpression;
+                return true;
             }
 
-            TokenReader.Skip(1);
-            Expression cond = ParseExpression();
-
-            return new RepeatStatement 
-            { 
-                Body = body, 
-                Condition = cond 
-            };
+            return false;
         }
 
-        Statement ParseDoStatement()
+        bool ParseSingleExpressions(out ExpressionList singleExpressions)
         {
-            TokenReader.Skip(1);
+            singleExpressions = new ExpressionList();
 
-            StatementList body = ParseStatements();
-            if (TokenReader.Expect(LexKind.Keyword, "end"))
+            for (; ; )
             {
-                TokenReader.Skip(1);
-            }
+                if (ParseFunctionExpression(null, out Expression expression))
+                {
+                    singleExpressions.Add(expression);
+                }
 
-            return new DoStatement { Body = body };
-        }
-
-        Statement ParseReturnStatement()
-        {
-            TokenReader.Skip(1);
-
-            ExpressionList exprs = ParseExpressionList();
-            ReturnStatement returnStatement = new ReturnStatement();
-            if (exprs != null && exprs.Count > 0)
-            {
-                returnStatement.ReturnValue = exprs.First();
-            }
-
-            return returnStatement;
-        }
-
-        Expression ParseExpression(int minPrec = (int)Precedence.Lowest)
-        {
-            Expression left = ParsePrefix();
-
-            while (true)
-            {
-                LexToken token = TokenReader.Peek();
-                int prec = GetBinaryPrecedence(token);
-                if (prec < minPrec)
+                if (tokenReader.Expect(LexKind.Comma))
+                {
+                    tokenReader.Skip(1);
+                }
+                else
                 {
                     break;
                 }
+            }
 
-                if (IsBinaryOperator(token))
+            if (singleExpressions.Count == 0)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        bool ParseExpression(out Expression expression, bool parsingArray = false)
+        {
+            expression = null;
+
+            // Expressions that can not be directly included in another expression without modifying it
+            if (ParseIfExpression(out IfExpression ifExpression))
+            {
+                expression = ifExpression;
+                return true;
+            }
+            if (ParseFunctionDeclarationExpression(out FunctionDeclarationExpression functionDeclarationExpression))
+            {
+                expression = functionDeclarationExpression;
+                return true;
+            }
+
+            if(ParseSingleExpression(out Expression singleExpression))
+            {
+                expression = singleExpression;
+            }
+            else
+            {
+                return false;
+            }
+
+            // Expression with left side expressions
+            for(; ; )
+            {
+                if (ParseCallExpression(expression, out CallExpression callExpression))
                 {
-                    TokenReader.Skip(1);
-
-                    Expression right = ParseExpression(IsRightAssociative(token) ? prec : prec + 1);
-
-                    left = BuildBinaryExpression(token, left, right);
+                    expression = callExpression;
                     continue;
                 }
 
-                if (token.Kind == LexKind.Dot || token.Kind == LexKind.Colon)
+                if (ParseMemberExpression(expression, out MemberExpression memberExpression))
                 {
-                    TokenReader.Skip(1);
-
-                    if (!TokenReader.Expect(LexKind.Identifier))
-                    {
-                        throw new Exception("Expected identifier after '.' or ':'");
-                    }
-
-                    left = new MemberExpression
-                    {
-                        Left = left,
-                        Name = TokenReader.Consume().Value,
-                        IsMethod = token.Kind == LexKind.Colon
-                    };
-
+                    expression = memberExpression;
                     continue;
                 }
 
-                if (token.Kind == LexKind.BracketOpen)
+                if (ParseIndexExpression(expression, out IndexExpression indexExpression))
                 {
-                    TokenReader.Skip(1);
-
-                    Expression index = ParseExpression();
-                    if (TokenReader.Expect(LexKind.BracketClose))
-                    {
-                        TokenReader.Skip(1);
-                    }
-
-                    left = new IndexExpression
-                    {
-                        Array = left,
-                        Index = index
-                    };
-
+                    expression = indexExpression;
                     continue;
                 }
 
-                if (token.Kind == LexKind.ParentheseOpen)
+                // Expressions with left and right side expressions
+                if (ParseRelationalExpression(expression, out RelationalExpression relationalExpression))
                 {
-                    TokenReader.Skip(1);
-                    ExpressionList args = ParseExpressionList() ?? new ExpressionList();
-                    if (TokenReader.Expect(LexKind.ParentheseClose))
-                    {
-                        TokenReader.Skip(1);
-                    }
+                    expression = relationalExpression;
+                    continue;
+                }
 
-                    if (left is MemberExpression memberExpr2 && memberExpr2.IsMethod)
-                    {
-                        MemberExpression transformed = new MemberExpression
-                        {
-                            Left = memberExpr2.Left,
-                            Name = memberExpr2.Name,
-                            IsMethod = false
-                        };
+                if (ParseArithmeticExpression(expression, out ArithmeticExpression arithmeticExpression))
+                {
+                    expression = arithmeticExpression;
+                    continue;
+                }
 
-                        ExpressionList newArgs =
-                        [
-                            memberExpr2.Left, .. args
-                        ];
+                if (ParseLogicalExpression(expression, out LogicalExpression logicalExpression))
+                {
+                    expression = logicalExpression;
+                    continue;
+                }
 
-                        CallExpression callExpr = new CallExpression
-                        {
-                            Operand = transformed,
-                            Arguments = newArgs
-                        };
+                if (ParseConcatExpression(expression, out ConcatExpression concatExpression))
+                {
+                    expression = concatExpression;
+                    continue;
+                }
 
-                        left = callExpr;
-                    }
-                    else
-                    {
-                        CallExpression callExpr2 = new CallExpression
-                        {
-                            Operand = left,
-                            Arguments = args
-                        };
-
-                        left = callExpr2;
-                    }
-
+                if (parsingArray && ParseAssignmentExpression(expression, out AssignmentExpression assignmentExpression))
+                {
+                    expression = assignmentExpression;
                     continue;
                 }
 
                 break;
             }
 
-            return left;
+            return expression != null;
         }
 
-        ExpressionList ParseExpressionList()
+        ExpressionList ParseExpressions(bool parsingArray = false)
         {
-            ExpressionList list = new ExpressionList();
+            ExpressionList expressionList = new ExpressionList();
 
-            if (TokenReader.Expect(LexKind.ParentheseClose) 
-                || TokenReader.Expect(LexKind.BraceClose) 
-                || TokenReader.Expect(LexKind.EOF) 
-                || IsBlockTerminator())
+            for(; ; )
             {
-                return list;
-            }
-
-            while (true)
-            {
-                Expression expr = ParseExpression();
-                if (expr != null)
+                if (ParseExpression(out Expression expression, parsingArray))
                 {
-                    list.Add(expr);
+                    expressionList.Add(expression);
                 }
                 else
                 {
                     break;
                 }
 
-                if (TokenReader.Expect(LexKind.Comma))
-                { 
-                    TokenReader.Skip(1); 
-                    continue; 
+                if (tokenReader.Expect(LexKind.Comma) 
+                    || (parsingArray && tokenReader.Expect(LexKind.Semicolon)))
+                {
+                    tokenReader.Skip(1);
+                }
+                else
+                {
+                    break;
                 }
 
-                if (TokenReader.Expect(LexKind.Semicolon))
-                { 
-                    TokenReader.Skip(1); 
-                    continue; 
-                }
-
-                break;
             }
 
-            return list;
+            return expressionList;
         }
 
-        Expression ParsePrefix()
+        /* Statements */
+        bool ParseGroupedStatement(out GroupedStatement groupedStatement)
         {
-            LexToken tk = TokenReader.Peek();
+            groupedStatement = new GroupedStatement();
 
-            if (tk.Kind == LexKind.Sub)
+            if (tokenReader.Expect(LexKind.ParentheseOpen))
             {
-                TokenReader.Skip(1);
-                Expression right = ParseExpression((int)Precedence.Unary);
+                tokenReader.Skip(1);
 
-                return new NegativeExpression 
-                { 
-                    Expression = right 
-                };
-            }
-
-            if (tk.Kind == LexKind.Hashtag)
-            {
-                TokenReader.Skip(1);
-                Expression expr = ParseExpression((int)Precedence.Unary);
-
-                return new LengthExpression 
-                { 
-                    Expression = expr 
-                };
-            }
-
-            if (tk.Kind == LexKind.Keyword && tk.Value == "not")
-            {
-                TokenReader.Skip(1);
-                Expression expr = ParseExpression((int)Precedence.Unary);
-
-                return new NotExpression
+                if (tokenReader.Expect(LexKind.ParentheseClose))
                 {
-                    Expression = expr
-                };
-            }
-
-            if (tk.Kind == LexKind.ParentheseOpen)
-            {
-                TokenReader.Skip(1);
-
-                if (TokenReader.Expect(LexKind.ParentheseClose))
-                { 
-                    TokenReader.Skip(1); 
-                    return null; 
+                    groupedStatement = null;
+                    return true;
                 }
 
-                Expression inner = ParseExpression();
-                if (TokenReader.Expect(LexKind.ParentheseClose))
+                if (ParseExpression(out Expression expression))
                 {
-                    TokenReader.Skip(1);
-                }
+                    groupedStatement.Expression = expression;
 
-                return new GroupedExpression 
-                { 
-                    Expression = inner 
-                };
-            }
-
-            if (tk.Kind == LexKind.String 
-                || tk.Kind == LexKind.Number 
-                || tk.Kind == LexKind.Boolean)
-            {
-                TokenReader.Skip(1);
-                ConstantExpression c = new ConstantExpression
-                {
-                    Value = tk.Value
-                };
-
-                switch (tk.Kind)
-                {
-                    case LexKind.String: c.Type = DataTypes.String; break;
-                    case LexKind.Number: c.Type = DataTypes.Number; break;
-                    case LexKind.Boolean: c.Type = DataTypes.Bool; break;
-                }
-                return c;
-            }
-
-            if (tk.Kind == LexKind.Vararg)
-            {
-                TokenReader.Skip(1);
-
-                return new VarargExpression();
-            }
-
-            if (tk.Kind == LexKind.Keyword && tk.Value == "nil")
-            {
-                TokenReader.Skip(1);
-
-                return new NilExpression();
-            }
-
-            if (tk.Kind == LexKind.Keyword && tk.Value == "function")
-            {
-                TokenReader.Skip(1);
-                IdentifierExpression name = null;
-                if (TokenReader.Expect(LexKind.Identifier))
-                { 
-                    name = new IdentifierExpression 
-                    { 
-                        Identifier = TokenReader.Consume().Value 
-                    }; 
-                }
-
-                if (TokenReader.Expect(LexKind.ParentheseOpen))
-                {
-                    TokenReader.Skip(1);
-                }
-
-                ExpressionList parameters = new ExpressionList();
-                while (!TokenReader.Expect(LexKind.ParentheseClose))
-                {
-                    if (TokenReader.Expect(LexKind.Identifier))
+                    if (tokenReader.ExpectFatal(LexKind.ParentheseClose))
                     {
-                        parameters.Add(new IdentifierExpression { Identifier = TokenReader.Consume().Value });
+                        tokenReader.Skip(1);
+                        return true;
                     }
-                    else if (TokenReader.Expect(LexKind.Vararg)) 
-                    { 
-                        parameters.Add(new VarargExpression()); TokenReader.Skip(1); 
+                }
+            }
+            return false;
+        }
+        bool ParseReturnStatement(out ReturnStatement returnStatement)
+        {
+            returnStatement = new ReturnStatement();
+
+            if(tokenReader.Expect(LexKind.Keyword, "return"))
+            {
+                tokenReader.Skip(1);
+                returnStatement.ReturnValues = ParseExpressions();
+
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseWhileStatement(out WhileStatement whileStatement)
+        {
+            whileStatement = new WhileStatement();
+
+            if (tokenReader.Expect(LexKind.Keyword, "while"))
+            {
+                tokenReader.Skip(1);
+                if (ParseExpression(out Expression condition))
+                {
+                    whileStatement.Condition = condition;
+                    if (tokenReader.Expect(LexKind.Keyword, "do"))
+                    {
+                        tokenReader.Skip(1);
+                        whileStatement.Body = ParseStatements();
+                        if (tokenReader.Expect(LexKind.Keyword, "end"))
+                        {
+                            tokenReader.Skip(1);
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseForStatement(out ForStatement forStatement)
+        {
+            forStatement = new ForStatement();
+
+            if(tokenReader.Expect(LexKind.Keyword, "for"))
+            {
+                tokenReader.Skip(1);
+                if(ParseIdentifierExpression(out IdentifierExpression identifierExpression))
+                {
+                    // For loop
+                    if (ParseAssignmentExpression(identifierExpression, out AssignmentExpression controlVariableExpression))
+                    {
+                        forStatement.ControlVariable = controlVariableExpression;
+                        tokenReader.Skip(1); // Skip the comma
+
+                        if (ParseExpression(out Expression endValueExpression))
+                        {
+                            forStatement.EndValue = endValueExpression;
+                            
+                            if(tokenReader.Expect(LexKind.Comma))
+                            {
+                                tokenReader.Skip(1); // Skip the coma
+                                if (ParseExpression(out Expression incrementExpression))
+                                {
+                                    forStatement.Increment = incrementExpression;
+                                }
+                            }
+
+                            if (tokenReader.ExpectFatal(LexKind.Keyword, "do"))
+                            {
+                                tokenReader.Skip(1);
+                                forStatement.Body = ParseStatements();
+
+                                if(tokenReader.ExpectFatal(LexKind.Keyword, "end"))
+                                {
+                                    tokenReader.Skip(1);
+                                    return true;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            throw new Exception("Expected valid expression at endvalue in for statement");
+                        }
+                    }
+
+                    // Generic for loop
+                    GenericForStatement genericForStatement = new GenericForStatement();
+                    genericForStatement.VariableArray.Array.Add(identifierExpression);
+
+                    for(; ; )
+                    {
+                        if(!tokenReader.Expect(LexKind.Comma))
+                        {
+                            break;
+                        }
+
+                        tokenReader.Skip(1);
+                        if(ParseIdentifierExpression(out IdentifierExpression variableExpression))
+                        {
+                            genericForStatement.VariableArray.Array.Add(variableExpression);
+                        }
+                    }
+
+                    if(tokenReader.ExpectFatal(LexKind.Keyword, "in"))
+                    {
+                        tokenReader.Skip(1);
+                        ExpressionList expressions = ParseExpressions();
+                        if(expressions.Count == 0)
+                        {
+                            throw new Exception("Expected at least one expression at iterator in generic for statement");
+                        }
+
+                        genericForStatement.Iterators = expressions;
+
+                        if (tokenReader.ExpectFatal(LexKind.Keyword, "do"))
+                        {
+                            tokenReader.Skip(1);
+                            genericForStatement.Body = ParseStatements();
+
+                            if (tokenReader.ExpectFatal(LexKind.Keyword, "end"))
+                            {
+                                tokenReader.Skip(1);
+                                forStatement = genericForStatement;
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+            }
+
+            return false;
+        }
+
+        bool ParseDoStatement(out DoStatement doStatement)
+        {
+            doStatement = new DoStatement();
+
+            if(tokenReader.Expect(LexKind.Keyword, "do"))
+            {
+                tokenReader.Skip(1);
+                doStatement.Body = ParseStatements();
+
+                if(tokenReader.ExpectFatal(LexKind.Keyword, "end"))
+                {
+                    tokenReader.Skip(1);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseRepeatStatement(out RepeatStatement repeatStatement)
+        {
+            repeatStatement = new RepeatStatement();
+
+            if(tokenReader.Expect(LexKind.Keyword, "repeat"))
+            {
+                tokenReader.Skip(1);
+                repeatStatement.Body = ParseStatements();
+
+                if(tokenReader.ExpectFatal(LexKind.Keyword, "until"))
+                {
+                    tokenReader.Skip(1);
+                    if(ParseExpression(out Expression conditionalExpression))
+                    {
+                        repeatStatement.Condition = conditionalExpression;
+                        return true;
                     }
                     else
                     {
-                        break;
-                    }
-
-                    if (TokenReader.Expect(LexKind.Comma))
-                    {
-                        TokenReader.Skip(1);
+                        throw new Exception("Expected valid expression at until in repeat statement");
                     }
                 }
-
-                if (TokenReader.Expect(LexKind.ParentheseClose))
-                {
-                    TokenReader.Skip(1);
-                }
-
-                StatementList body = ParseStatements();
-                if (TokenReader.Expect(LexKind.Keyword, "end"))
-                {
-                    TokenReader.Skip(1);
-                }
-
-                return new FunctionDeclarationExpression 
-                { 
-                    Name = name, 
-                    Parameters = parameters, 
-                    Body = body, 
-                    IsAnonymous = name == null 
-                };
             }
 
-            if (tk.Kind == LexKind.BraceOpen)
+            return false;
+        }
+
+        bool ParseBreakStatement(out BreakStatement breakStatement)
+        {
+            breakStatement = new BreakStatement();
+
+            if(tokenReader.Expect(LexKind.Keyword, "break"))
             {
-                TokenReader.Skip(1);
-                ExpressionList arr = new ExpressionList();
-                if (!TokenReader.Expect(LexKind.BraceClose))
+                tokenReader.Skip(1);
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseContinueStatement(out ContinueStatement continueStatement)
+        {
+            continueStatement = new ContinueStatement();
+
+            if (tokenReader.Expect(LexKind.Keyword, "continue"))
+            {
+                tokenReader.Skip(1);
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseIfStatement(out IfStatement ifStatement)
+        {
+            ifStatement = new IfStatement();
+
+            if (tokenReader.Expect(LexKind.Keyword, "if"))
+            {
+                tokenReader.Skip(1);
+                if(ParseExpression(out Expression condition))
                 {
-                    while (true)
+                    ifStatement.Condition = condition;
+                    if(tokenReader.Expect(LexKind.Keyword, "then"))
                     {
-                        Expression elementExpr = ParseExpression();
-                        if (elementExpr != null)
+                        tokenReader.Skip(1);
+                        ifStatement.Body = ParseStatements();
+
+                        for (; ; )
                         {
-                            arr.Add(elementExpr);
+                            if (tokenReader.Expect(LexKind.Keyword, "elseif"))
+                            {
+                                tokenReader.Skip(1);
+                                IfStatement elseIfStatement = new IfStatement();
+
+                                if (ParseExpression(out Expression elseIfExpression))
+                                {
+                                    elseIfStatement.Condition = elseIfExpression;
+                                    if (tokenReader.Expect(LexKind.Keyword, "then"))
+                                    {
+                                        tokenReader.Skip(1);
+                                        elseIfStatement.Body = ParseStatements();
+                                        ifStatement.ElseIfStatements.Add(elseIfStatement);
+                                    }
+                                }
+                                continue;
+                            }
+
+                            if (tokenReader.Expect(LexKind.Keyword, "else"))
+                            {
+                                tokenReader.Skip(1);
+                                ifStatement.ElseStatements = ParseStatements();
+                                continue;
+                            }
+
+                            break;
                         }
 
-                        if (TokenReader.Expect(LexKind.Comma)
-                            || TokenReader.Expect(LexKind.Semicolon))
+
+                        if (tokenReader.Expect(LexKind.Keyword, "end"))
                         {
-                            TokenReader.Skip(1);
+                            tokenReader.Skip(1);
+                            return true;
                         }
-                        else break;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseFunctionDeclarationStatement(out FunctionDeclarationStatement functionDeclarationStatement)
+        {
+            functionDeclarationStatement = new FunctionDeclarationStatement();
+
+            if (tokenReader.Expect(LexKind.Keyword) && tokenReader.Peek().Value == "function")
+            {
+                tokenReader.Skip(1);
+
+                if (ParseIdentifierExpression(out IdentifierExpression identifierExpression))
+                {
+                    functionDeclarationStatement.Name = identifierExpression;
+                    if (tokenReader.ExpectFatal(LexKind.ParentheseOpen))
+                    {
+                        tokenReader.Skip(1);
+                        functionDeclarationStatement.Parameters = ParseExpressions();
+
+                        tokenReader.ExpectFatal(LexKind.ParentheseClose);
+
+                        tokenReader.Skip(1);
+                        functionDeclarationStatement.Body = ParseStatements();
+
+                        if (tokenReader.Expect(LexKind.Keyword, "end"))
+                        {
+                            tokenReader.Skip(1);
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        bool ParseCallStatement(Expression function, out CallStatement callStatement)
+        {
+            callStatement = new CallStatement();
+
+            callStatement.Function = function;
+
+            if(!tokenReader.Expect(LexKind.ParentheseOpen))
+            {
+                return false;
+            }
+
+            tokenReader.Skip(1);
+            callStatement.Arguments = ParseExpressions();
+
+            if (callStatement.Arguments.Count == 0)
+            {
+                tokenReader.Skip(1);
+            }
+
+            if (tokenReader.ExpectFatal(LexKind.ParentheseClose))
+            {
+                tokenReader.Skip(1);
+            }
+
+            return true;
+        }
+
+        // TODO: Seperate assignment statement from declaration statement (local statement)
+        // TODO: Multiple declaration statement
+        bool ParseAssignmentStatement(ExpressionList varExpressions, out AssignmentStatement assignmentStatement)
+        {
+            assignmentStatement = new AssignmentStatement();
+
+            assignmentStatement.Variables = varExpressions;
+            if (tokenReader.Expect(LexKind.Equals))
+            {
+                tokenReader.Skip(1);
+                assignmentStatement.Values = ParseExpressions();
+
+                if(assignmentStatement.Values.Count == 0)
+                {
+                    throw new Exception($"Line {tokenReader.Peek().Line}: Assignment statement contains no values");
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ParseLocalDeclarationStatement(out LocalDeclarationStatement localDeclarationStatement)
+        {
+            localDeclarationStatement = new LocalDeclarationStatement();
+
+            if(tokenReader.Expect(LexKind.Keyword, "local"))
+            {
+                LexToken errorToken = tokenReader.Peek(1);
+
+                if(tokenReader.Expect(LexKind.Identifier, 1))
+                {
+                    tokenReader.Skip(1);
+
+                    if(ParseVariableExpressions(out ExpressionList expressionList))
+                    {
+                        if (ParseAssignmentStatement(expressionList, out AssignmentStatement assignmentStatement))
+                        {
+                            localDeclarationStatement.Statement = assignmentStatement;
+                            return true;
+                        }
+
+                        localDeclarationStatement.Expressions = expressionList;
+                        return true;
+                    }
+
+
+                }
+
+                if(tokenReader.Expect(LexKind.Keyword, "function", 1))
+                {
+                    tokenReader.Skip(1);
+                    if(ParseFunctionDeclarationStatement(out FunctionDeclarationStatement functionDeclarationStatement))
+                    {
+                        localDeclarationStatement.Statement = functionDeclarationStatement;
+                        return true;
                     }
                 }
 
-                if (TokenReader.Expect(LexKind.BraceClose))
+                throw new Exception($"Line {errorToken.Line}: Identifier or function expected after keyword 'local', got kind:{errorToken.Kind}, value:{errorToken.Value}");
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Generates a statement at the given position in the token reader
+        /// </summary>
+        bool ParseStatement(out Statement statement)
+        {
+            statement = new Statement();
+            if (ParseFunctionDeclarationStatement(out FunctionDeclarationStatement functionDeclarationStatement))
+            {
+                statement = functionDeclarationStatement;
+                return true;
+            }
+            if(ParseIfStatement(out IfStatement ifStatement))
+            {
+                statement = ifStatement;
+                return true;
+            }
+            if(ParseWhileStatement(out WhileStatement whileStatement))
+            {
+                statement = whileStatement;
+                return true;
+            }
+            if(ParseReturnStatement(out ReturnStatement returnStatement))
+            {
+                statement = returnStatement;
+                return true;
+            }
+            if(ParseForStatement(out ForStatement forStatement))
+            {
+                statement = forStatement;
+                return true;
+            }
+            if(ParseRepeatStatement(out RepeatStatement repeatStatement))
+            {
+                statement = repeatStatement;
+                return true;
+            }
+            if(ParseDoStatement(out DoStatement doStatement))
+            {
+                statement = doStatement;
+                return true;
+            }
+            if(ParseBreakStatement(out BreakStatement breakStatement))
+            {
+                statement = breakStatement;
+                return true;
+            }
+            if(ParseContinueStatement(out ContinueStatement continueStatement))
+            {
+                statement = continueStatement;
+                return true;
+            }
+            if(ParseLocalDeclarationStatement(out LocalDeclarationStatement localDeclarationStatement))
+            {
+                statement = localDeclarationStatement;
+                return true;
+            }
+            if (ParseGroupedStatement(out GroupedStatement groupedStatement))
+            {
+                statement = groupedStatement;
+                return true;
+            }
+
+            ExpressionList expressions = ParseExpressions();
+            if (expressions.Count > 0)
+            {
+                if(expressions.First() is CallExpression callExpression)
                 {
-                    TokenReader.Skip(1);
-                }
-
-                return new ArrayExpression { Array = arr };
-            }
-
-            if (tk.Kind == LexKind.Identifier)
-            {
-                TokenReader.Skip(1);
-                return new IdentifierExpression { Identifier = tk.Value };
-            }
-
-            return null;
-        }
-
-        static bool IsBinaryOperator(LexToken tok)
-        {
-            if (tok.Kind == LexKind.Keyword)
-            {
-                return tok.Value == "and" || tok.Value == "or";
-            }
-
-            switch (tok.Kind)
-            {
-                case LexKind.Add:
-                case LexKind.Sub:
-                case LexKind.Mul:
-                case LexKind.Div:
-                case LexKind.Mod:
-                case LexKind.Exp:
-                case LexKind.Concat:
-                case LexKind.EqualTo:
-                case LexKind.NotEqualTo:
-                case LexKind.BiggerOrEqual:
-                case LexKind.SmallerOrEqual:
-                case LexKind.ChevronOpen:
-                case LexKind.ChevronClose:
-                    return true;
-                default: return false;
-            }
-        }
-
-        static bool IsBinaryOperatorToken(LexKind kind)
-        {
-            switch (kind)
-            {
-                case LexKind.Add: case LexKind.Sub: case LexKind.Mul: case LexKind.Div: case LexKind.Mod: case LexKind.Exp: case LexKind.Concat:
-                case LexKind.EqualTo: case LexKind.NotEqualTo: case LexKind.BiggerOrEqual: case LexKind.SmallerOrEqual: case LexKind.ChevronOpen: case LexKind.ChevronClose:
-                    return true;
-                default: return false;
-            }
-        }
-
-        int GetBinaryPrecedence(LexToken tok)
-        {
-            if (tok.Kind == LexKind.Keyword)
-            {
-                if (tok.Value == "or")
-                {
-                    return (int)Precedence.Or;
-                }
-
-                if (tok.Value == "and")
-                {
-                    return (int)Precedence.And;
-                }
-            }
-
-            switch (tok.Kind)
-            {
-                case LexKind.EqualTo:
-                case LexKind.NotEqualTo:
-                case LexKind.BiggerOrEqual:
-                case LexKind.SmallerOrEqual:
-                case LexKind.ChevronOpen:
-                case LexKind.ChevronClose:
-                    return (int)Precedence.Relational;
-                case LexKind.Concat: 
-                    return (int)Precedence.Concat;
-                case LexKind.Add: 
-                case LexKind.Sub: 
-                    return (int)Precedence.AddSub;
-                case LexKind.Mul: 
-                case LexKind.Div: 
-                case LexKind.Mod: 
-                    return (int)Precedence.MulDiv;
-                case LexKind.Exp: 
-                    return (int)Precedence.Exponent;
-                default: return (int)Precedence.Lowest;
-            }
-        }
-
-        bool IsRightAssociative(LexToken tok)
-        {
-            return tok.Kind == LexKind.Exp || tok.Kind == LexKind.Concat;
-        }
-
-        Expression BuildBinaryExpression(LexToken opTok, Expression left, Expression right)
-        {
-            if (opTok.Kind == LexKind.Keyword)
-            {
-                if (opTok.Value == "and" 
-                    || opTok.Value == "or")
-                {
-                    return new LogicalExpression 
-                    { 
-                        Left = left, 
-                        Right = right, 
-                        Operator = opTok.Value == "and" ? LogicalOperators.And : LogicalOperators.Or 
+                    statement = new CallStatement
+                    {
+                        Function = callExpression.Operand,
+                        Arguments = callExpression.Arguments
                     };
+                    return true;
+                }
+
+                if (ParseCallStatement(expressions.First(), out CallStatement callStatement))
+                {
+                    statement = callStatement;
+                    return true;
+                }
+                if (ParseAssignmentStatement(expressions, out AssignmentStatement assignmentStatement))
+                {
+                    statement = assignmentStatement;
+                    return true;
+                }
+
+                throw new Exception($"Line {tokenReader.Peek().Line}: Invalid parsing: " + string.Join(", ", expressions.Select(s => s.GetType().FullName)));
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Generates the statements with the tokens from the token reader
+        /// </summary>
+        public StatementList ParseStatements()
+        {
+            StatementList statements = new StatementList();
+
+            for(int i = 0; i < tokenReader.LexTokens.Count; i++)
+            {
+                if (ParseStatement(out Statement statement))
+                {
+                    statements.Add(statement);
+                }
+
+                if (tokenReader.Expect(LexKind.Semicolon))
+                {
+                    tokenReader.Consume();
+                }
+
+                if (tokenReader.Expect(LexKind.EOF))
+                {
+                    break;
                 }
             }
 
-            switch (opTok.Kind)
-            {
-                case LexKind.Add: return new ArithmeticExpression { Left = left, Right = right, Operator = ArithmeticOperators.Addition };
-                case LexKind.Sub: return new ArithmeticExpression { Left = left, Right = right, Operator = ArithmeticOperators.Subtraction };
-                case LexKind.Mul: return new ArithmeticExpression { Left = left, Right = right, Operator = ArithmeticOperators.Multiplication };
-                case LexKind.Div: return new ArithmeticExpression { Left = left, Right = right, Operator = ArithmeticOperators.Division };
-                case LexKind.Mod: return new ArithmeticExpression { Left = left, Right = right, Operator = ArithmeticOperators.Modulus };
-                case LexKind.Exp: return new ArithmeticExpression { Left = left, Right = right, Operator = ArithmeticOperators.Exponentiation };
-                case LexKind.Concat: return new ConcatExpression { Left = left, Right = right };
-                case LexKind.EqualTo: return new RelationalExpression { Left = left, Right = right, Operator = RelationalOperators.EqualTo };
-                case LexKind.NotEqualTo: return new RelationalExpression { Left = left, Right = right, Operator = RelationalOperators.NotEqualTo };
-                case LexKind.BiggerOrEqual: return new RelationalExpression { Left = left, Right = right, Operator = RelationalOperators.BiggerOrEqual };
-                case LexKind.SmallerOrEqual: return new RelationalExpression { Left = left, Right = right, Operator = RelationalOperators.SmallerOrEqual };
-                case LexKind.ChevronOpen: return new RelationalExpression { Left = left, Right = right, Operator = RelationalOperators.SmallerThan };
-                case LexKind.ChevronClose: return new RelationalExpression { Left = left, Right = right, Operator = RelationalOperators.BiggerThan };
-                default: throw new Exception("Unhandled binary operator: " + opTok.Kind);
-            }
+            return statements;
         }
     }
 }

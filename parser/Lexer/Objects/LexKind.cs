@@ -201,22 +201,4 @@ namespace Loom.Parser.Lexer.Objects
         /// </summary>
         EOF
     }
-
-    class LexKindHelper
-    {
-        public static bool IsBinaryOperator(LexKind lexKind)
-        {
-            switch (lexKind)
-            {
-                case LexKind.Add:
-                case LexKind.Sub:
-                case LexKind.Mul:
-                case LexKind.Div:
-                    return true;
-
-                default:
-                    return false;
-            }
-        }
-    }
 }

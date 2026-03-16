@@ -11,6 +11,5 @@ namespace Loom.Parser.ASTGenerator.AST.Expressions
     /// </summary>
     public class Expression
     {
-        // No-op edit to ensure file reading
     }
 }

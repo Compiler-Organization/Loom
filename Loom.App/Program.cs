@@ -32,7 +32,6 @@ namespace Loom.App
 
             Console.WriteLine("Amount of statements; " + statements.Count.ToString());
             statements.ForEach(t => t.Log());
-            ((AssignmentStatement)statements.ElementAt(1)).Variables.ForEach(t => t.Log("---- "));
             Console.WriteLine("Original;");
             Console.WriteLine(prettyPrinter.Print(statements));
 

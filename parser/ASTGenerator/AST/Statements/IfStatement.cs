@@ -41,8 +41,6 @@ namespace Loom.Parser.ASTGenerator.AST.Statements
         {
             this.Condition = condition;
             this.Body = body;
-            this.ElseIfStatements = new List<IfStatement>();
-            this.ElseStatements = new StatementList();
         }
 
         /// <summary>
