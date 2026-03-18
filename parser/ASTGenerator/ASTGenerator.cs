@@ -437,12 +437,25 @@ namespace Loom.Parser.ASTGenerator
             return false;
         }
 
-        bool ParseNilExpression(out NilExpression nilExpression)
+        bool ParseTypeExpression(out TypeExpression typeExpression)
         {
-            nilExpression = new NilExpression();
+            typeExpression = new TypeExpression();
 
-            if(tokenReader.Expect(LexKind.Keyword, "nil"))
+            if (tokenReader.Expect(LexKind.Keyword))
             {
+                switch (tokenReader.Peek().Value)
+                {
+                    case "string": typeExpression.Type = TypeAnnotations.String; break;
+                    case "number": typeExpression.Type = TypeAnnotations.Number; break;
+                    case "boolean": typeExpression.Type = TypeAnnotations.Boolean; break;
+                    case "nil": typeExpression.Type = TypeAnnotations.Nil; break;
+                    case "any": typeExpression.Type = TypeAnnotations.Any; break;
+                    case "thread": typeExpression.Type = TypeAnnotations.Thread; break;
+
+                    default:
+                        return false;
+                }
+
                 tokenReader.Skip(1);
                 return true;
             }
@@ -699,9 +712,9 @@ namespace Loom.Parser.ASTGenerator
                 expression = notExpression;
                 return true;
             }
-            if (ParseNilExpression(out NilExpression nilExpression))
+            if (ParseTypeExpression(out TypeExpression typeExpression))
             {
-                expression = nilExpression;
+                expression = typeExpression;
                 return true;
             }
             if (ParseIdentifierExpression(out IdentifierExpression identifierExpression))

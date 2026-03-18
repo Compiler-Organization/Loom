@@ -25,15 +25,20 @@ namespace Loom.Parser.Lexer
             "if", 
             "in", 
             "local", 
-            "nil", 
             "not", 
             "or", 
             "repeat", 
             "return", 
             "then", 
             "true", 
-            "until", 
-            "while"
+            "until",
+            "while",
+            "nil",
+            "any",
+            "boolean",
+            "number",
+            "string",
+            "thread",
         };
 
         string Input { get; set; }

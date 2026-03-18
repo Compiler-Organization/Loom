@@ -199,9 +199,17 @@ namespace Loom.Parser.PrettyPrint
             scriptBuilder.Append("not ");
             GenerateExpression(notExpression.Expression);
         }
-        void GenerateNilExpression(NilExpression nilExpression)
+        void GenerateTypeExpression(TypeExpression typeExpression)
         {
-            scriptBuilder.Append("nil");
+            switch(typeExpression.Type)
+            {
+                case TypeAnnotations.Any: scriptBuilder.Append("any"); break;
+                case TypeAnnotations.Nil: scriptBuilder.Append("nil"); break;
+                case TypeAnnotations.Boolean: scriptBuilder.Append("boolean"); break;
+                case TypeAnnotations.Number: scriptBuilder.Append("number"); break;
+                case TypeAnnotations.String: scriptBuilder.Append("string"); break;
+                case TypeAnnotations.Thread: scriptBuilder.Append("thread"); break;
+            }
         }
 
         void GenerateMemberExpression(MemberExpression memberExpression)
@@ -296,9 +304,9 @@ namespace Loom.Parser.PrettyPrint
             {
                 GenerateLogicalExpression(logicalExpression);
             }
-            if(expression is NilExpression nilExpression)
+            if(expression is TypeExpression nilExpression)
             {
-                GenerateNilExpression(nilExpression);
+                GenerateTypeExpression(nilExpression);
             }
         }
 
