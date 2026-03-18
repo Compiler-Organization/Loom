@@ -3,7 +3,6 @@ using Loom.Parser.ASTGenerator.AST.Expressions;
 using Loom.Parser.Lexer.Objects;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Loom.Parser.ASTGenerator.AST;
@@ -138,6 +137,7 @@ namespace Loom.Parser.ASTGenerator
                 case LexKind.Sub: binaryOperator = ArithmeticOperators.Subtraction; break;
                 case LexKind.Mul: binaryOperator = ArithmeticOperators.Multiplication; break;
                 case LexKind.Div: binaryOperator = ArithmeticOperators.Division; break;
+                case LexKind.FloorDiv: binaryOperator = ArithmeticOperators.FloorDivision; break;
                 case LexKind.Mod: binaryOperator = ArithmeticOperators.Modulus; break;
                 case LexKind.Exp: binaryOperator = ArithmeticOperators.Exponentiation; break;
             }
@@ -1247,6 +1247,37 @@ namespace Loom.Parser.ASTGenerator
             return false;
         }
 
+        bool ParseCompoundAssignmentStatement(Expression variableExpression, out CompoundAssignmentStatement compoundAssignmentStatement)
+        {
+            compoundAssignmentStatement = new CompoundAssignmentStatement();
+
+            compoundAssignmentStatement.Variable = variableExpression;
+            LexKind compoundKind = tokenReader.Peek().Kind;
+
+            switch (compoundKind)
+            {
+                case LexKind.CompoundAdd: compoundAssignmentStatement.Operator = CompoundOperators.Addition; break;
+                case LexKind.CompoundSub: compoundAssignmentStatement.Operator = CompoundOperators.Subtraction; break;
+                case LexKind.CompoundMul: compoundAssignmentStatement.Operator = CompoundOperators.Multiplication; break;
+                case LexKind.CompoundDiv: compoundAssignmentStatement.Operator = CompoundOperators.Division; break;
+                case LexKind.CompoundFloorDiv: compoundAssignmentStatement.Operator = CompoundOperators.FloorDivision; break;
+                case LexKind.CompoundExp: compoundAssignmentStatement.Operator = CompoundOperators.Exponentiation; break;
+                case LexKind.CompoundMod: compoundAssignmentStatement.Operator = CompoundOperators.Modulus; break;
+                case LexKind.CompoundConcat: compoundAssignmentStatement.Operator = CompoundOperators.Concat; break;
+                default:
+                    return false;
+            }
+
+            tokenReader.Skip(1);
+            if (ParseExpression(out Expression valueExpression))
+            {
+                compoundAssignmentStatement.Value = valueExpression;
+                return true;
+            }
+
+            throw new Exception();
+        }
+
         bool ParseLocalDeclarationStatement(out LocalDeclarationStatement localDeclarationStatement)
         {
             localDeclarationStatement = new LocalDeclarationStatement();
@@ -1368,6 +1399,11 @@ namespace Loom.Parser.ASTGenerator
                 if (ParseCallStatement(expressions.First(), out CallStatement callStatement))
                 {
                     statement = callStatement;
+                    return true;
+                }
+                if(ParseCompoundAssignmentStatement(expressions.First(), out CompoundAssignmentStatement compoundAssignmentStatement))
+                {
+                    statement = compoundAssignmentStatement;
                     return true;
                 }
                 if (ParseAssignmentStatement(expressions, out AssignmentStatement assignmentStatement))

@@ -110,7 +110,17 @@ namespace Loom.Parser.Lexer
 
                     case ';': kind = LexKind.Semicolon; break;
 
-                    case ':': kind = LexKind.Colon; break;
+                    case ':':
+                        {
+                            kind = LexKind.Colon;
+                            if (Input[i + 1] == ':')
+                            {
+                                kind = LexKind.Cast;
+                                i++;
+                            }
+
+                            break;
+                        }
 
                     case ',': kind = LexKind.Comma; break;
 
@@ -121,12 +131,17 @@ namespace Loom.Parser.Lexer
                             if(Input[i + 1] == '.')
                             {
                                 kind = LexKind.Concat;
-                                i++;
-                                if (Input[i + 1] == '.')
+                                if (Input[i + 2] == '.')
                                 {
-                                    i++;
                                     kind = LexKind.Vararg;
+                                    i++;
                                 }
+                                else if (Input[i + 2] == '=')
+                                {
+                                    kind = LexKind.CompoundConcat;
+                                    i++;
+                                }
+                                i++;
                             }
 
                             break;
@@ -211,33 +226,73 @@ namespace Loom.Parser.Lexer
                     case '+':
                         {
                             kind = LexKind.Add;
+                            if (Input[i + 1] == '=')
+                            {
+                                kind = LexKind.CompoundAdd;
+                                i++;
+                            }
                             break;
                         }
                     case '-':
                         {
                             kind = LexKind.Sub;
+                            if (Input[i + 1] == '=')
+                            {
+                                kind = LexKind.CompoundSub;
+                                i++;
+                            }
                             break;
                         }
                     case '*':
                         {
                             kind = LexKind.Mul;
+                            if (Input[i + 1] == '=')
+                            {
+                                kind = LexKind.CompoundMul;
+                                i++;
+                            }
                             break;
                         }
                     case '/':
                         {
                             
                             kind = LexKind.Div;
+                            if (Input[i + 1] == '=')
+                            {
+                                kind = LexKind.CompoundDiv;
+                                i++;
+                            }
+                            else if (Input[i + 1] == '/')
+                            {
+                                kind = LexKind.FloorDiv;
+                                if (Input[i + 2] == '=')
+                                {
+                                    kind = LexKind.CompoundFloorDiv;
+                                    i++;
+                                }
+                                i++;
+                            }
                             break;
                         }
                     case '%':
                         {
                             kind = LexKind.Mod;
+                            if (Input[i + 1] == '=')
+                            {
+                                kind = LexKind.CompoundMod;
+                                i++;
+                            }
                             break;
                         }
                     case '^':
                         {
 
                             kind = LexKind.Exp;
+                            if (Input[i + 1] == '=')
+                            {
+                                kind = LexKind.CompoundExp;
+                                i++;
+                            }
                             break;
                         }
 

@@ -55,6 +55,11 @@ namespace Loom.Parser.ASTGenerator.AST.Expressions
         Division,
 
         /// <summary>
+        /// E.g '//'
+        /// </summary>
+        FloorDivision,
+
+        /// <summary>
         /// E.g '%'
         /// </summary>
         Modulus,

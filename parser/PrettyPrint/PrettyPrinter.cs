@@ -460,6 +460,22 @@ namespace Loom.Parser.PrettyPrint
                 GenerateStatement(localDeclarationStatement.Statement, "");
                 return true;
             }
+            if(statement is CompoundAssignmentStatement compoundAssignmentStatement)
+            {
+                GenerateExpression(compoundAssignmentStatement.Variable);
+                switch (compoundAssignmentStatement.Operator)
+                {
+                    case CompoundOperators.Addition: scriptBuilder.Append(" += "); break;
+                    case CompoundOperators.Subtraction: scriptBuilder.Append(" -= "); break;
+                    case CompoundOperators.Multiplication: scriptBuilder.Append(" *= "); break;
+                    case CompoundOperators.Division: scriptBuilder.Append(" /= "); break;
+                    case CompoundOperators.Modulus: scriptBuilder.Append(" %= "); break;
+                    case CompoundOperators.Exponentiation: scriptBuilder.Append(" ^= "); break;
+                    case CompoundOperators.Concat: scriptBuilder.Append(" ..= "); break;
+                }
+                GenerateExpression(compoundAssignmentStatement.Value, indent, PrinterSettings.NewLine);
+                return true;
+            }
 
             return false;
         }

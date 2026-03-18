@@ -1,2 +1,1 @@
-﻿local arr = { ["test"] = 3 }
-print(arr["test"])
+﻿array[3] += function() return true end

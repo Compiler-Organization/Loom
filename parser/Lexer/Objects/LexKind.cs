@@ -23,6 +23,11 @@ namespace Loom.Parser.Lexer.Objects
         Comment,
 
         /// <summary>
+        /// E.g '::'
+        /// </summary>
+        Cast,
+
+        /// <summary>
         /// E.g '['
         /// </summary>
         BracketOpen,
@@ -172,6 +177,11 @@ namespace Loom.Parser.Lexer.Objects
         Div,
 
         /// <summary>
+        /// E.g '//'
+        /// </summary>
+        FloorDiv,
+
+        /// <summary>
         /// E.g '%'
         /// </summary>
         Mod,
@@ -185,6 +195,46 @@ namespace Loom.Parser.Lexer.Objects
         /// E.g '..'
         /// </summary>
         Concat,
+
+        /// <summary>
+        /// E.g '+='
+        /// </summary>
+        CompoundAdd,
+
+        /// <summary>
+        /// E.g '-='
+        /// </summary>
+        CompoundSub,
+
+        /// <summary>
+        /// E.g '*='
+        /// </summary>
+        CompoundMul,
+
+        /// <summary>
+        /// E.g '/='
+        /// </summary>
+        CompoundDiv,
+
+        /// <summary>
+        /// E.g '%='
+        /// </summary>
+        CompoundMod,
+
+        /// <summary>
+        /// E.g '^='
+        /// </summary>
+        CompoundExp,
+
+        /// <summary>
+        /// E.g '..='
+        /// </summary>
+        CompoundConcat,
+        
+        /// <summary>
+        /// E.g '//='
+        /// </summary>
+        CompoundFloorDiv,
 
         /// <summary>
         /// E.g '...'
