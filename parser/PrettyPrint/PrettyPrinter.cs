@@ -1,4 +1,5 @@
-﻿using Loom.Parser.ASTGenerator.AST;
+﻿using Loom.parser.ASTGenerator.AST.Statements;
+using Loom.Parser.ASTGenerator.AST;
 using Loom.Parser.ASTGenerator.AST.Expressions;
 using Loom.Parser.ASTGenerator.AST.Statements;
 using System;
@@ -326,6 +327,14 @@ namespace Loom.Parser.PrettyPrint
 
         bool GenerateStatement(Statement statement, string indent)
         {
+            if(statement is TypeDeclarationStatement typeDeclarationStatement)
+            {
+                scriptBuilder.Append(indent);
+                scriptBuilder.Append("type ");
+                GenerateExpression(typeDeclarationStatement.Annotation, indent, PrinterSettings.NewLine);
+                scriptBuilder.Append(" = ");
+                GenerateExpression(typeDeclarationStatement.Type, indent, PrinterSettings.NewLine);
+            }
             if(statement is CallStatement callStatement)
             {
                 scriptBuilder.Append(indent);

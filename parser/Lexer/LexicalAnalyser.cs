@@ -39,6 +39,7 @@ namespace Loom.Parser.Lexer
             "number",
             "string",
             "thread",
+            "type"
         };
 
         string Input { get; set; }

@@ -9,6 +9,7 @@ using Loom.Parser.ASTGenerator.AST;
 using System.Runtime.InteropServices;
 using Loom.Parser.Lexer;
 using System.Threading;
+using Loom.parser.ASTGenerator.AST.Statements;
 
 namespace Loom.Parser.ASTGenerator
 {
@@ -646,7 +647,11 @@ namespace Loom.Parser.ASTGenerator
 
             if(tokenReader.Expect(LexKind.Colon))
             {
+                if(tokenReader.Expect(LexKind.Identifier, 1)
+                    && tokenReader.Expect(LexKind.))
+
                 tokenReader.Skip(1);
+
                 memberExpression.IsInvoke = true;
 
                 if (ParseExpression(out Expression expression))
@@ -1334,6 +1339,31 @@ namespace Loom.Parser.ASTGenerator
             return false;
         }
 
+        bool ParseTypeDeclarationStatement(out TypeDeclarationStatement typeDeclarationStatement)
+        {
+            typeDeclarationStatement = new TypeDeclarationStatement();
+
+            if(tokenReader.Expect(LexKind.Keyword, "type"))
+            {
+                tokenReader.Skip(1);
+                if(ParseIdentifierExpression(out IdentifierExpression identifierExpression))
+                {
+                    typeDeclarationStatement.Annotation = identifierExpression;
+                    if (tokenReader.ExpectFatal(LexKind.Equals))
+                    {
+                        tokenReader.Skip(1);
+                        if (ParseExpression(out Expression annotationExpression))
+                        {
+                            typeDeclarationStatement.Type = annotationExpression;
+                        }
+                    }
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Generates a statement at the given position in the token reader
         /// </summary>
@@ -1343,6 +1373,11 @@ namespace Loom.Parser.ASTGenerator
             if (ParseFunctionDeclarationStatement(out FunctionDeclarationStatement functionDeclarationStatement))
             {
                 statement = functionDeclarationStatement;
+                return true;
+            }
+            if(ParseTypeDeclarationStatement(out TypeDeclarationStatement typeDeclarationStatement))
+            {
+                statement = typeDeclarationStatement;
                 return true;
             }
             if(ParseIfStatement(out IfStatement ifStatement))
